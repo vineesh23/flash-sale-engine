@@ -1,53 +1,55 @@
 const express = require('express');
-const { Pool } = require('pg');
 const redis = require('redis');
-
+const amqp = require('amqplib');
+const cors = require('cors');
 const app = express();
+app.use(cors());
 app.use(express.json());
 
-const pool = new Pool({
-  user: 'user123',
-  host: 'localhost',
-  database: 'flash_sale_db',
-  password: 'password123',
-  port: 5432,
-});
+// --- CONNECT TO RABBITMQ & REDIS ---
+let channel, redisClient;
 
-const redisClient = redis.createClient();
-redisClient.connect().then(() => console.log('✅ Connected to Redis'));
+async function setup() {
+  // 1. Redis
+  redisClient = redis.createClient();
+  await redisClient.connect();
+  console.log('✅ Connected to Redis');
 
-// --- THE FIXED ENDPOINT ---
+  // 2. RabbitMQ
+  const connection = await amqp.connect('amqp://localhost');
+  channel = await connection.createChannel();
+  await channel.assertQueue('order_queue', { durable: true });
+  console.log('✅ Connected to RabbitMQ');
+}
+
+setup();
+
+// --- THE ULTRA-FAST ENDPOINT ---
 app.post('/buy', async (req, res) => {
   const { userId, productId } = req.body;
-  const key = `product_stock:${productId}`;
+  
+  if (!redisClient || !channel) {
+    return res.status(500).send("System starting up...");
+  }
 
   try {
-    // 1. ATOMIC DECREMENT (The Magic Fix)
-    // Redis instantly subtracts 1 and returns the NEW value.
-    // No two requests can happen at the same time here.
-    const remainingStock = await redisClient.decr(key);
+    // 1. ATOMIC STOCK CHECK (Fast)
+    const remainingStock = await redisClient.decr(`product_stock:${productId}`);
 
     if (remainingStock >= 0) {
-      // 2. SUCCESS: We secured an item!
-      
-      // (Optional: We still add latency to simulate realism, 
-      // but it won't break the system anymore because Redis already reserved it)
-      // await new Promise(resolve => setTimeout(resolve, 50)); 
+      // 2. SEND TO QUEUE (Fast)
+      // We do NOT wait for the database here.
+      const orderData = JSON.stringify({ userId, productId });
+      channel.sendToQueue('order_queue', Buffer.from(orderData));
 
-      // 3. Record the order in Postgres
-      // In a real system, we would push to RabbitMQ here (Phase 2).
-      // For now, we write to DB directly to prove the fix.
-      await pool.query('INSERT INTO orders (user_id, product_id, quantity) VALUES ($1, $2, $3)', [userId, productId, 1]);
-
-      res.json({ message: "Success! Order placed." });
+      // 3. INSTANT RESPONSE
+      res.json({ message: "Order Received! Processing..." });
     } else {
-      // 3. FAIL: Stock went below 0 (e.g., -1, -2)
-      // We oversold in Redis, so we don't touch the Database.
       res.status(400).json({ message: "Sold Out!" });
     }
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: "Something went wrong" });
+    res.status(500).send("Error");
   }
 });
 
