@@ -1,22 +1,30 @@
+require('dotenv').config(); // Load environment variables from .env file
 const { Pool } = require('pg');
 const redis = require('redis');
 
+// 1. Setup Postgres Connection (Using Cloud URL)
 const pool = new Pool({
-  user: 'user123',
-  host: 'localhost',
-  database: 'flash_sale_db',
-  password: 'password123',
-  port: 5432,
+  connectionString: process.env.DATABASE_URL,
+  ssl: {
+    rejectUnauthorized: false // Required for Neon.tech security
+  }
 });
 
-const redisClient = redis.createClient();
+// 2. Setup Redis Connection (Using Cloud URL)
+const redisClient = redis.createClient({
+  url: process.env.REDIS_URL
+});
+
+redisClient.on('error', (err) => console.log('Redis Client Error', err));
 
 const setupDatabase = async () => {
   try {
     // Connect to Redis
     await redisClient.connect();
+    console.log("✅ Connected to Cloud Redis");
 
-    // 1. Reset Postgres Tables
+    // 3. Reset Postgres Tables
+    console.log("⏳ Resetting Database...");
     await pool.query(`DROP TABLE IF EXISTS orders;`);
     await pool.query(`DROP TABLE IF EXISTS products;`);
 
@@ -39,13 +47,13 @@ const setupDatabase = async () => {
       );
     `);
 
-    // 2. Insert Dummy Data into Postgres
+    // 4. Insert Dummy Data into Postgres
     await pool.query(`
       INSERT INTO products (name, stock, price) 
       VALUES ('iPhone 15 Pro', 100, 999);
     `);
 
-    // 3. --- CRITICAL STEP: SYNC REDIS ---
+    // 5. --- CRITICAL STEP: SYNC REDIS ---
     // We set the Redis counter to match the DB stock (100)
     await redisClient.set('product_stock:1', 100);
 

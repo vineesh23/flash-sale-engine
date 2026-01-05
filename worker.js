@@ -1,46 +1,50 @@
+require('dotenv').config(); // Load environment variables
 const amqp = require('amqplib');
 const { Pool } = require('pg');
 
+// 1. Setup Postgres Connection (Cloud)
 const pool = new Pool({
-  user: 'user123',
-  host: 'localhost',
-  database: 'flash_sale_db',
-  password: 'password123',
-  port: 5432,
+  connectionString: process.env.DATABASE_URL,
+  ssl: {
+    rejectUnauthorized: false // Required for Neon
+  }
 });
 
 async function startWorker() {
   try {
-    // 1. Connect to RabbitMQ
-    const connection = await amqp.connect('amqp://localhost');
+    // 2. Connect to RabbitMQ (Cloud)
+    // We use the CloudAMQP URL from your .env file
+    const connection = await amqp.connect(process.env.RABBITMQ_URL);
     const channel = await connection.createChannel();
     const queue = 'order_queue';
 
-    // 2. Make sure the queue exists
+    // 3. Make sure the queue exists
     await channel.assertQueue(queue, { durable: true });
 
-    console.log("👷 Worker started! Waiting for orders...");
+    console.log("👷 Cloud Worker started! Waiting for orders...");
 
-    // 3. Process Orders
+    // 4. Process Orders
     channel.consume(queue, async (msg) => {
-      const orderData = JSON.parse(msg.content.toString());
-      const { userId, productId } = orderData;
+      if (msg !== null) {
+        const orderData = JSON.parse(msg.content.toString());
+        const { userId, productId } = orderData;
 
-      console.log(`📥 Received order for ${userId}`);
+        console.log(`📥 Received order for ${userId}`);
 
-      try {
-        // 4. Save to Postgres (The heavy lifting)
-        await pool.query(
-          'INSERT INTO orders (user_id, product_id, quantity) VALUES ($1, $2, $3)',
-          [userId, productId, 1]
-        );
-        console.log(`✅ Saved order to DB for ${userId}`);
-        
-        // 5. Acknowledge (Tell RabbitMQ we are done)
-        channel.ack(msg);
-      } catch (err) {
-        console.error("❌ Database save failed", err);
-        // If it fails, we don't ack, so RabbitMQ will retry later.
+        try {
+          // 5. Save to Postgres (The heavy lifting)
+          await pool.query(
+            'INSERT INTO orders (user_id, product_id, quantity) VALUES ($1, $2, $3)',
+            [userId, productId, 1]
+          );
+          console.log(`✅ Saved order to DB for ${userId}`);
+          
+          // 6. Acknowledge (Tell RabbitMQ we are done)
+          channel.ack(msg);
+        } catch (err) {
+          console.error("❌ Database save failed", err);
+          // If it fails, we don't ack, so RabbitMQ will retry later.
+        }
       }
     });
 
