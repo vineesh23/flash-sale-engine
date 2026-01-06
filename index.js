@@ -24,12 +24,21 @@ let channel, redisClient;
 async function setup() {
   try {
     // 1. Connect to Cloud Redis (Upstash)
-    // We force 'family: 4' to prevent Render from trying IPv6
+    // MANUALLY PARSE THE URL TO AVOID CONFLICTS
+    if (!process.env.REDIS_URL) {
+      throw new Error("Redis URL is missing!");
+    }
+
+    // This converts "rediss://:password@host:port" into parts we can use
+    const redisUrl = new URL(process.env.REDIS_URL);
+    
     redisClient = redis.createClient({
-      url: process.env.REDIS_URL,
+      password: redisUrl.password,
       socket: {
-        rejectUnauthorized: false, // Allow connection even if SSL is strict
-        family: 4 // <--- THIS IS THE MAGIC FIX (Force IPv4)
+        host: redisUrl.hostname,
+        port: redisUrl.port,
+        tls: true, // Force SSL
+        rejectUnauthorized: false // Allow self-signed certs (Fixes the handshake error)
       }
     });
     
