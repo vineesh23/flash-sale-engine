@@ -24,11 +24,12 @@ let channel, redisClient;
 async function setup() {
   try {
     // 1. Connect to Cloud Redis (Upstash)
-    // SIMPLIFIED: We let the 'rediss://' URL handle the security settings automatically.
+    // We force 'family: 4' to prevent Render from trying IPv6
     redisClient = redis.createClient({
       url: process.env.REDIS_URL,
       socket: {
-        family: 0 // This fixes a common issue with IPv6 on some cloud providers
+        rejectUnauthorized: false, // Allow connection even if SSL is strict
+        family: 4 // <--- THIS IS THE MAGIC FIX (Force IPv4)
       }
     });
     
