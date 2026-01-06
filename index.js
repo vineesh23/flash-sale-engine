@@ -25,7 +25,11 @@ async function setup() {
   try {
     // 1. Connect to Cloud Redis (Upstash)
     redisClient = redis.createClient({
-      url: process.env.REDIS_URL
+      url: process.env.REDIS_URL,
+      socket: {
+        tls: true,
+        rejectUnauthorized: false // <--- THIS IS THE MAGIC FIX
+      }
     });
     redisClient.on('error', (err) => console.log('Redis Client Error', err));
     await redisClient.connect();
