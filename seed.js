@@ -5,9 +5,7 @@ const redis = require('redis');
 // 1. Setup Postgres Connection (Using Cloud URL)
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: {
-    rejectUnauthorized: false // Required for Neon.tech security
-  }
+  ssl: true // Simple SSL enforcement for Neon
 });
 
 // 2. Setup Redis Connection (Using Cloud URL)

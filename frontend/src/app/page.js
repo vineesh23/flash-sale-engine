@@ -10,9 +10,11 @@ export default function Home() {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    // Connect to Backend WebSocket
-    // CHANGE PORT TO 3001 if your backend is on 3001
-    socket = io('http://localhost:3001');
+    // 1. CONNECT TO YOUR CLOUD SERVER ☁️
+    // Replace localhost with your actual Render URL
+    socket = io('https://flash-sale-engine.onrender.com', {
+        transports: ['websocket'], // Force WebSocket for better performance
+    });
 
     socket.on('stock_update', (newStock) => {
       setStock(newStock);
@@ -28,8 +30,8 @@ export default function Home() {
     setStatus('Processing...');
 
     try {
-      // Update fetch URL to port 3001
-      const res = await fetch('http://localhost:3001/buy', {
+      // 2. SEND BUY REQUEST TO CLOUD SERVER ☁️
+      const res = await fetch('https://flash-sale-engine.onrender.com/buy', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
